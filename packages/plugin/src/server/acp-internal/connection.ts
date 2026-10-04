@@ -596,10 +596,13 @@ class AcpRuntime {
       turnId,
       state: "started",
     });
+    // The SDK dispatches notifications without awaiting them, so the prompt response can resolve
+    // while earlier session updates are still queued. Apply them before the turn ends.
     const settled = this.call(
       this.connection.prompt({ sessionId: this.nativeSessionId, prompt }),
     ).then(
-      (response): void => {
+      async (response): Promise<void> => {
+        await this.drainNotifications();
         const state = response.stopReason === "cancelled" ? "canceled" : "completed";
         this.fallbackChunkIds.clear();
         this.terminalizeTransientItems(state);
@@ -611,7 +614,8 @@ class AcpRuntime {
         });
         return undefined;
       },
-      (error): void => {
+      async (error): Promise<void> => {
+        await this.drainNotifications();
         this.fallbackChunkIds.clear();
         this.terminalizeTransientItems("failed");
         this.emit({
